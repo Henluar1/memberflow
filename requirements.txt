@@ -1,7 +1,8 @@
 streamlit
 pandas
-fpdf2
 plotly
+fpdf
+matplotlib
 Pillow
 streamlit-folium
 folium
