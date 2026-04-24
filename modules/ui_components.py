@@ -17,147 +17,212 @@ PAESI_AFRICA = [
     "Sudafrica", "Sudan", "Sudan del Sud", "Tanzania", "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
 ]
 
+# Categorie aggiornate basate sul Catalogo Reale 2025
+CATEGORIE_REAL = [
+    "ENERGIA & AMBIENTE", "MACCHINARI & IMPIANTI", "ICT & DIGITALE", 
+    "EDILIZIA & INFRASTRUTTURE", "AGROALIMENTARE", "LOGISTICA & TRASPORTI", 
+    "CHIMICA & GOMMA", "SERVIZI ALLE IMPRESE", "BANCHE", "ALTRO"
+]
+
 def render_form_inserimento():
-    st.subheader("Registra una nuova Azienda")
-    with st.form("form_nuovo", clear_on_submit=True):
-        c1, c2 = st.columns(2)
-        nome = c1.text_input("Ragione Sociale")
-        cat = c1.selectbox("Categoria", ["ENERGIA", "ICT", "BANCHE", "EDILIZIA", "LOGISTICA", "ALTRO"])
-        ref = c1.text_input("Referente")
-        
-        mail = c2.text_input("Email")
-        web = c2.text_input("Sito Web")
-        pagato = c2.selectbox("Stato Pagamento", ["Pagato", "In attesa"])
-        
-        st.write("---")
-        st.write("🌍 **Presenza nel Continente**")
-        tutto_continente = st.toggle("Opera in tutta l'Africa")
-        
-        if tutto_continente:
-            paesi_selezionati = ["Tutta l'Africa"]
-            st.info("L'azienda verrà mostrata come operativa in ogni stato africano.")
-        else:
-            paesi_selezionati = st.multiselect("Seleziona i Paesi Operativi", PAESI_AFRICA)
-        
-        desc = st.text_area("Descrizione")
-        logo = st.file_uploader("Logo Aziendale", type=["png", "jpg"])
-        
-        if st.form_submit_button("SALVA NEL DATABASE"):
-            if nome and paesi_selezionati:
-                path_logo = ""
-                if logo:
-                    if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
-                    path_logo = f"loghi_soci/{nome.replace(' ', '_')}.png"
-                    Image.open(logo).save(path_logo)
+    st.subheader("📝 Registra nuova Azienda dal Catalogo")
+    tab1, tab2 = st.tabs(["Inserimento Singolo", "Importazione Massiva (Excel)"])
+    
+    with tab1:
+        with st.form("form_nuovo", clear_on_submit=True):
+            c1, c2 = st.columns(2)
+            nome = c1.text_input("Ragione Sociale")
+            cat = c1.selectbox("Settore Merceologico", CATEGORIE_REAL)
+            ref = c1.text_input("Referente A&M")
+            mail = c2.text_input("Email")
+            web = c2.text_input("Sito Web")
+            pagato = c2.selectbox("Stato Socio", ["Pagato", "In attesa"])
+            st.write("---")
+            st.write("🌍 **Operatività in Africa**")
+            tutto_continente = st.toggle("Opera in tutto il continente (Pan-Africana)")
+            paesi_selezionati = ["Tutta l'Africa"] if tutto_continente else st.multiselect("Seleziona Paesi specifici", PAESI_AFRICA)
+            desc = st.text_area("Descrizione attività")
+            logo = st.file_uploader("Carica Logo", type=["png", "jpg"])
+            
+            if st.form_submit_button("SALVA NEL DATABASE"):
+                if nome and paesi_selezionati:
+                    path_logo = ""
+                    if logo:
+                        if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
+                        path_logo = f"loghi_soci/{nome.replace(' ', '_')}.png"
+                        Image.open(logo).save(path_logo)
+                    stringa_paesi = ",".join(paesi_selezionati)
+                    aggiungi_socio(nome, cat, ref, mail, web, desc, path_logo, pagato, stringa_paesi)
+                    st.success(f"Azienda {nome} aggiunta!")
+                    st.rerun()
+
+    with tab2:
+        st.info("Carica l'Excel dei soci. Il sistema identificherà automaticamente le colonne.")
+        file_excel = st.file_uploader("Carica file Excel (.xlsx)", type=["xlsx"])
+        if file_excel:
+            df_raw = pd.read_excel(file_excel, header=None)
+            header_row_index = None
+            for i, row in df_raw.iterrows():
+                vals = [str(v).lower().strip() for v in row.values]
+                if 'nome' in vals or 'ragione sociale' in vals:
+                    header_row_index = i
+                    break
+            
+            if header_row_index is not None:
+                df_import = pd.read_excel(file_excel, skiprows=header_row_index)
+                col_map = {str(c).lower().strip(): c for c in df_import.columns}
                 
-                stringa_paesi = ",".join(paesi_selezionati)
-                aggiungi_socio(nome, cat, ref, mail, web, desc, path_logo, pagato, stringa_paesi)
-                st.success(f"Azienda {nome} registrata correttamente!")
-                st.rerun()
-            else:
-                st.error("Inserisci almeno la Ragione Sociale e un Paese operativo.")
+                def get_smart_val(row_data, alias_list, default=""):
+                    for alias in alias_list:
+                        if alias in col_map:
+                            val = row_data[col_map[alias]]
+                            return str(val).strip() if pd.notnull(val) else default
+                    return default
+
+                if st.button("🚀 AVVIA IMPORTAZIONE MASSIVA"):
+                    progress_bar = st.progress(0)
+                    for i, index in enumerate(df_import.index):
+                        row = df_import.loc[index]
+                        nome_val = get_smart_val(row, ['nome', 'ragione sociale', 'azienda'], "Socio Anonimo")
+                        if nome_val == "Socio Anonimo" or str(nome_val) == "nan": continue
+                        
+                        aggiungi_socio(
+                            nome_val, 
+                            get_smart_val(row, ['categoria', 'settore', 'area'], "ALTRO"), 
+                            get_smart_val(row, ['referente', 'contatto'], ""), 
+                            get_smart_val(row, ['email', 'mail'], ""), 
+                            get_smart_val(row, ['sito', 'web', 'url'], ""), 
+                            get_smart_val(row, ['descrizione', 'attività'], ""), 
+                            "", # path_logo vuoto per import massivo
+                            "Pagato", 
+                            get_smart_val(row, ['sede', 'paesi', 'operatività'], "Tutta l'Africa")
+                        )
+                        progress_bar.progress((i + 1) / len(df_import))
+                    st.success("Importazione completata!")
+                    st.rerun()
 
 def render_gestione():
     df = leggi_soci()
     if not df.empty:
-        st.subheader("📋 Gestione Anagrafiche")
-        cerca = st.text_input("🔍 Filtra per Nome Azienda")
+        st.subheader("📋 Gestione Anagrafiche e Loghi")
+        cerca = st.text_input("🔍 Cerca socio", placeholder="Es: Eni, Energia...")
         if cerca:
-            df = df[df['nome'].str.contains(cerca, case=False)]
+            df = df[df['nome'].str.contains(cerca, case=False) | df['categoria'].str.contains(cerca, case=False)]
         
         for i, row in df.iterrows():
             with st.expander(f"🏢 {row['nome']} ({row['categoria']})"):
                 c1, c2 = st.columns(2)
                 new_nome = c1.text_input("Ragione Sociale", value=row['nome'], key=f"n_{row['id']}")
-                new_cat = c1.selectbox("Categoria", ["ENERGIA", "ICT", "BANCHE", "EDILIZIA", "LOGISTICA", "ALTRO"], 
-                                       index=0, key=f"c_{row['id']}")
-                
+                idx_cat = CATEGORIE_REAL.index(row['categoria']) if row['categoria'] in CATEGORIE_REAL else 0
+                new_cat = c1.selectbox("Settore", CATEGORIE_REAL, index=idx_cat, key=f"c_{row['id']}")
+                new_ref = c1.text_input("Referente Assafrica", value=row['referente'], key=f"r_{row['id']}")
                 new_mail = c2.text_input("Email", value=row['email'], key=f"e_{row['id']}")
+                new_web = c2.text_input("Sito Web", value=row['sito'], key=f"w_{row['id']}")
                 new_pag = c2.selectbox("Stato", ["Pagato", "In attesa"], 
                                        index=0 if row['pagato'] == "Pagato" else 1, key=f"p_{row['id']}")
                 
-                st.write("**Paesi Operativi:**")
-                current_paesi = row['sede'].split(",") if row['sede'] else []
-                is_all_africa = "Tutta l'Africa" in current_paesi
+                st.write("---")
+                col_img, col_up = st.columns([0.3, 0.7])
+                if row['logo_path'] and os.path.exists(row['logo_path']):
+                    col_img.image(row['logo_path'], width=100)
                 
-                edit_tutto = st.toggle("Opera in tutta l'Africa", value=is_all_africa, key=f"togg_{row['id']}")
-                if edit_tutto:
+                new_logo = col_up.file_uploader("Aggiorna Logo", type=["png", "jpg"], key=f"up_{row['id']}")
+                
+                current_paesi = str(row['sede']).split(",") if row['sede'] else []
+                is_all_africa = "Tutta l'Africa" in current_paesi
+                togg = st.toggle("Opera in tutta l'Africa", value=is_all_africa, key=f"togg_{row['id']}")
+                
+                if togg:
                     new_paesi_str = "Tutta l'Africa"
                 else:
-                    clean_paesi = [p for p in current_paesi if p in PAESI_AFRICA]
-                    new_paesi_list = st.multiselect("Modifica Paesi", PAESI_AFRICA, default=clean_paesi, key=f"ms_{row['id']}")
-                    new_paesi_str = ",".join(new_paesi_list)
+                    defaults = [p.strip() for p in current_paesi if p.strip() in PAESI_AFRICA]
+                    sel = st.multiselect("Modifica Paesi", PAESI_AFRICA, default=defaults, key=f"ms_{row['id']}")
+                    new_paesi_str = ",".join(sel)
                 
                 new_desc = st.text_area("Descrizione", value=row['descrizione'], key=f"d_{row['id']}")
                 
-                col_b1, col_b2 = st.columns(2)
-                if col_b1.button("💾 Salva Modifiche", key=f"save_{row['id']}"):
-                    aggiorna_socio(row['id'], new_nome, new_cat, row['referente'], new_mail, row['sito'], new_desc, row['logo_path'], new_pag, new_paesi_str)
+                b1, b2 = st.columns(2)
+                if b1.button("💾 SALVA MODIFICHE", key=f"save_{row['id']}", use_container_width=True):
+                    path_finale = row['logo_path']
+                    if new_logo:
+                        path_finale = f"loghi_soci/{new_nome.replace(' ', '_')}.png"
+                        Image.open(new_logo).save(path_finale)
+                    aggiorna_socio(row['id'], new_nome, new_cat, new_ref, new_mail, new_web, new_desc, path_finale, new_pag, new_paesi_str)
                     st.success("Dati aggiornati!")
                     st.rerun()
                 
-                if col_b2.button("🗑️ Elimina", key=f"del_{row['id']}"):
+                if b2.button("🗑️ ELIMINA AZIENDA", key=f"del_{row['id']}", use_container_width=True):
                     elimina_socio(row['id'])
                     st.rerun()
+    else:
+        st.info("Database vuoto.")
 
 def render_analytics():
     df = leggi_soci()
     if not df.empty:
-        st.subheader("📊 Business Intelligence & Geo-Analytics")
+        st.subheader("📊 Business Intelligence & Macro-Trend Africa")
         
-        # --- ELABORAZIONE GEO-DATI ---
+        # --- ELABORAZIONE DATI ---
         lista_paesi_flat = []
-        presenza_pan_africana = 0
-        
-        for p_str in df['sede'].dropna():
+        heatmap_data = []
+        for _, row in df.iterrows():
+            p_str = str(row.get('sede', ''))
+            paesi = PAESI_AFRICA if p_str == "Tutta l'Africa" else [p.strip() for p in p_str.split(",") if p.strip()]
+            
+            for p in paesi:
+                if p in PAESI_AFRICA:
+                    lista_paesi_flat.append(p)
+                    heatmap_data.append({'Settore': row['categoria'], 'Paese': p})
+            
             if p_str == "Tutta l'Africa":
-                presenza_pan_africana += 1
-                # Se vogliamo conteggiarli tutti nel grafico a barre, decommentare sotto:
-                # lista_paesi_flat.extend(PAESI_AFRICA)
-            else:
-                lista_paesi_flat.extend([p.strip() for p in p_str.split(",") if p.strip()])
-        
-        # DataFrame per il grafico dei paesi
+                lista_paesi_flat.append("Pan-Africana")
+
         df_geo_counts = pd.Series(lista_paesi_flat).value_counts().reset_index()
         df_geo_counts.columns = ['Paese', 'Numero Aziende']
 
-        # --- METRICHE ---
+        # 1. KPI TOP BAR
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Totale Soci", len(df))
-        m2.metric("Mercati Presidiati", len(df_geo_counts))
-        m3.metric("Soci Pan-Africani", presenza_pan_africana)
-        
+        mercati_f = len(df_geo_counts[df_geo_counts['Paese'] != "Pan-Africana"])
+        m2.metric("Mercati Presidiati", mercati_f)
+        m3.metric("Aziende Pan-Africane", len(df[df['sede'] == "Tutta l'Africa"]))
         pagati = len(df[df['pagato'] == 'Pagato'])
-        m4.metric("Stato Incassi", f"{(pagati/len(df)*100):.1f}%")
+        reg = (pagati/len(df)*100) if len(df) > 0 else 0
+        m4.metric("Regolarità Quote", f"{reg:.1f}%")
 
         st.divider()
 
-        # --- GRAFICI ---
-        c1, c2 = st.columns(2)
-        
+        # 2. TOP MERCATI E COMPOSIZIONE
+        c1, c2 = st.columns([0.6, 0.4])
         with c1:
-            # Grafico Categorie
-            fig1 = px.pie(df, names='categoria', hole=0.4, 
-                          title="Distribuzione per Settore",
-                          color_discrete_sequence=px.colors.qualitative.Pastel)
-            st.plotly_chart(fig1, use_container_width=True)
-            
+            st.markdown("#### 🏆 Top 15 Mercati Strategici")
+            top_15 = df_geo_counts[df_geo_counts['Paese'] != "Pan-Africana"].head(15)
+            fig_bar = px.bar(top_15, x='Numero Aziende', y='Paese', orientation='h',
+                             color='Numero Aziende', color_continuous_scale='Blues', text_auto=True)
+            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'}, height=400, showlegend=False)
+            st.plotly_chart(fig_bar, use_container_width=True)
+
         with c2:
-            # Grafico Top Paesi
-            if not df_geo_counts.empty:
-                fig2 = px.bar(df_geo_counts.head(10), x='Paese', y='Numero Aziende',
-                              title="Top 10 Paesi per Operatività",
-                              color='Numero Aziende', color_continuous_scale='Viridis')
-                st.plotly_chart(fig2, use_container_width=True)
-            else:
-                st.info("Nessun dato geografico specifico disponibile.")
+            st.markdown("#### 🏗️ Treemap dei Settori")
+            fig_tree = px.treemap(df, path=['categoria', 'nome'], color='categoria', template="plotly_white")
+            fig_tree.update_layout(height=400, margin=dict(t=0, l=0, r=0, b=0))
+            st.plotly_chart(fig_tree, use_container_width=True)
 
-        # --- ANALISI INCASSI ---
-        st.write("---")
-        fig3 = px.bar(df, x='categoria', color='pagato', barmode='group', 
-                      title="Analisi Pagamenti per Categoria Business",
-                      color_discrete_map={'Pagato': '#2ecc71', 'In attesa': '#e67e22'})
-        st.plotly_chart(fig3, use_container_width=True)
+        st.divider()
 
+        # 3. HEATMAP SETTORE VS PAESE
+        st.markdown("#### 🛰️ Radar di Penetrazione: Settore vs Paesi")
+        if heatmap_data:
+            df_heat = pd.DataFrame(heatmap_data)
+            df_h_counts = df_heat.groupby(['Settore', 'Paese']).size().reset_index(name='Presenze')
+            fig_heat = px.density_heatmap(df_h_counts, x="Paese", y="Settore", z="Presenze",
+                                          color_continuous_scale="GnBu", text_auto=True)
+            st.plotly_chart(fig_heat, use_container_width=True)
+
+        # 4. PAGAMENTI
+        st.markdown("#### 💰 Health Check: Stato Pagamenti per Settore")
+        fig_pay = px.histogram(df, x="categoria", color="pagato", barmode="group",
+                               color_discrete_map={'Pagato': '#2E86C1', 'In attesa': '#E67E22'})
+        st.plotly_chart(fig_pay, use_container_width=True)
     else:
-        st.info("Aggiungi i primi soci per visualizzare le statistiche.")
+        st.info("Nessun dato per le analisi.")

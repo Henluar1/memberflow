@@ -1,73 +1,120 @@
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
-
-# Dizionario coordinate centrali per i paesi africani (per velocità e precisione)
-COORDS_AFRICA = {
-    "Algeria": [28.0339, 1.6596], "Angola": [-11.2027, 17.8739], "Benin": [9.3077, 2.3158],
-    "Botswana": [-22.3285, 24.6849], "Burkina Faso": [12.2383, -1.5616], "Burundi": [-3.3731, 29.9189],
-    "Camerun": [7.3697, 12.3547], "Capo Verde": [16.002, -24.0131], "Ciad": [15.4542, 18.7322],
-    "Comore": [-11.6455, 43.3333], "Costa d'Avorio": [7.54, -5.5471], "Egitto": [26.8206, 30.8025],
-    "Eritrea": [15.1794, 39.7823], "Eswatini": [-26.5225, 31.4659], "Etiopia": [9.145, 40.4897],
-    "Gabon": [-0.8037, 11.6094], "Gambia": [13.4432, -15.3101], "Ghana": [7.9465, -1.0232],
-    "Gibuti": [11.8251, 42.5903], "Guinea": [9.9456, -9.6966], "Guinea Equatoriale": [1.6508, 10.2679],
-    "Guinea-Bissau": [11.8037, -15.1804], "Kenya": [-0.0236, 37.9062], "Lesotho": [-29.61, 28.2336],
-    "Liberia": [6.4281, -9.4295], "Libia": [26.3351, 17.2283], "Madagascar": [-18.7669, 46.8691],
-    "Malawi": [-13.2543, 34.3015], "Mali": [17.5707, -3.9962], "Marocco": [31.7917, -7.0926],
-    "Mauritania": [21.0079, -10.9408], "Mauritius": [-20.3484, 57.5522], "Mozambico": [-18.6657, 35.5296],
-    "Namibia": [-22.9576, 18.4904], "Niger": [17.6078, 8.0817], "Nigeria": [9.082, 8.6753],
-    "Repubblica Centrafricana": [6.6111, 20.9394], "Repubblica del Congo": [-0.228, 15.8277],
-    "Repubblica Democratica del Congo": [-4.0383, 21.7587], "Ruanda": [-1.9403, 29.8739],
-    "Sahara Occidentale": [24.2155, -12.8858], "Senegal": [14.4974, -14.4524], "Seychelles": [-4.6796, 55.492],
-    "Sierra Leone": [8.4606, -11.7799], "Somalia": [5.1521, 46.1996], "Sudafrica": [-30.5595, 22.9375],
-    "Sudan": [12.8628, 30.2176], "Sudan del Sud": [6.877, 31.307], "Tanzania": [-6.369, 34.8888],
-    "Togo": [8.6195, 0.8248], "Tunisia": [33.8869, 9.5375], "Uganda": [1.3733, 32.2903],
-    "Zambia": [-13.1339, 27.8493], "Zimbabwe": [-19.0154, 29.1549]
-}
+import pandas as pd
 
 def render_mappa(df):
-    st.subheader("🌍 Mappa Operatività Associati")
-    
-    # Centro della mappa sull'Africa
-    m = folium.Map(location=[2.0, 16.0], zoom_start=3, tiles="CartoDB positron")
+    # CSS per pulire ulteriormente i margini e rendere le card più snelle
+    st.markdown("""
+        <style>
+        .stDataFrame {border: none !important;}
+        .compact-card {
+            padding: 8px 12px; 
+            border-radius: 6px; 
+            border-left: 4px solid #004a99; 
+            background-color: #fcfcfc; 
+            margin-bottom: 6px;
+            box-shadow: 1px 1px 3px rgba(0,0,0,0.05);
+        }
+        .compact-card h5 { margin: 0; color: #004a99; font-size: 1rem; }
+        .compact-card p { margin: 0; font-size: 0.8rem; color: #666; }
+        .compact-card a { font-size: 0.75rem; font-weight: bold; }
+        </style>
+    """, unsafe_allow_html=True)
 
-    for i, row in df.iterrows():
-        paesi_stringa = row.get('sede', '')
-        if not paesi_stringa:
-            continue
+    st.subheader("🌍 Network Explorer | Business Community 2025")
+    
+    # 1. PREPARAZIONE DATI
+    PAESI_AFRICA_LIST = [
+        "Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Camerun", "Capo Verde", 
+        "Ciad", "Comore", "Costa d'Avorio", "Egitto", "Eritrea", "Eswatini", "Etiopia", "Gabon", 
+        "Gambia", "Ghana", "Gibuti", "Guinea", "Guinea Equatoriale", "Guinea-Bissau", "Kenya", 
+        "Lesotho", "Liberia", "Libia", "Madagascar", "Malawi", "Mali", "Marocco", "Mauritania", 
+        "Mauritius", "Mozambico", "Namibia", "Niger", "Nigeria", "Repubblica Centrafricana", 
+        "Repubblica del Congo", "Repubblica Democratica del Congo", "Ruanda", "Sahara Occidentale", 
+        "Senegal", "Seychelles", "Sierra Leone", "Somalia", "Sudafrica", "Sudan", "Sudan del Sud", 
+        "Tanzania", "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe"
+    ]
+
+    conteggio = {p: 0 for p in PAESI_AFRICA_LIST}
+    for _, row in df.iterrows():
+        sede = str(row.get('sede', ''))
+        target = PAESI_AFRICA_LIST if sede == "Tutta l'Africa" else [p.strip() for p in sede.split(',') if p.strip() in PAESI_AFRICA_LIST]
+        for p in target:
+            conteggio[p] += 1
+    df_counts = pd.DataFrame(list(conteggio.items()), columns=['name', 'soci'])
+
+    col_left, col_right = st.columns([0.65, 0.35])
+
+    with col_left:
+        # 2. MAPPA FISSA (No zoom, No dragging)
+        m = folium.Map(
+            location=[2.0, 18.0], 
+            zoom_start=3.2, 
+            tiles="CartoDB positron",
+            zoom_control=False,     # Rimuove i tasti + e -
+            scrollWheelZoom=False,  # Disabilita lo zoom con la rotellina
+            dragging=False          # Blocca il trascinamento
+        )
+        
+        geojson_url = "https://raw.githubusercontent.com/python-visualization/folium/master/examples/data/world-countries.json"
+
+        folium.Choropleth(
+            geo_data=geojson_url,
+            data=df_counts,
+            columns=["name", "soci"],
+            key_on="feature.properties.name",
+            fill_color="Blues", 
+            fill_opacity=0.7,
+            line_opacity=0.2,
+            nan_fill_color="#f8f9fa",
+            highlight=True,
+        ).add_to(m)
+
+        # Layer per il click
+        folium.GeoJson(
+            geojson_url,
+            name="geojson",
+            style_function=lambda x: {'fillColor': 'transparent', 'color': 'transparent', 'weight': 0},
+            tooltip=folium.GeoJsonTooltip(fields=['name'], aliases=['Stato:'], localize=True)
+        ).add_to(m)
+
+        map_output = st_folium(m, width=720, height=520, key="mappa_fissa")
+
+    with col_right:
+        # 3. PANNELLO SCHEDE COMPATTE
+        paese_selezionato = None
+        if map_output and map_output.get("last_active_drawing"):
+            paese_selezionato = map_output["last_active_drawing"]["properties"]["name"]
+
+        if paese_selezionato and paese_selezionato in PAESI_AFRICA_LIST:
+            st.markdown(f"#### 📍 {paese_selezionato}")
             
-        # Determiniamo la lista dei paesi in cui l'azienda opera
-        if paesi_stringa == "Tutta l'Africa":
-            paesi_da_disegnare = list(COORDS_AFRICA.keys())
-        else:
-            paesi_da_disegnare = paesi_stringa.split(",")
-
-        # Colore basato sul pagamento
-        colore = "blue" if row['pagato'] == "Pagato" else "orange"
-
-        for paese in paesi_da_disegnare:
-            paese = paese.strip()
-            if paese in COORDS_AFRICA:
-                # Usiamo CircleMarker per un look più moderno e pulito
-                folium.CircleMarker(
-                    location=COORDS_AFRICA[paese],
-                    radius=6,
-                    color=colore,
-                    fill=True,
-                    fill_color=colore,
-                    fill_opacity=0.7,
-                    popup=folium.Popup(f"""
-                        <div style='width: 200px;'>
-                            <b>{row['nome']}</b><br>
-                            <i>{row['categoria']}</i><br><br>
-                            Presenza in: {paese}<br>
-                            Stato: {row['pagato']}
+            mask = df.apply(lambda r: paese_selezionato in str(r['sede']) or str(r['sede']) == "Tutta l'Africa", axis=1)
+            df_filtrato = df[mask]
+            
+            # Contenitore ad altezza fissa uguale alla mappa per simmetria
+            container = st.container(height=460)
+            with container:
+                if not df_filtrato.empty:
+                    for _, soci in df_filtrato.iterrows():
+                        st.markdown(f"""
+                        <div class="compact-card">
+                            <h5>{soci['nome']}</h5>
+                            <p><b>{soci['categoria']}</b> | {soci['referente']}</p>
+                            <div style="margin-top:4px;">
+                                <a href="mailto:{soci['email']}" style="color:#d9534f; margin-right:10px;">📧 Email</a>
+                                <a href="{soci['sito'] if str(soci['sito']).startswith('http') else 'https://'+str(soci['sito'])}" target="_blank" style="color:#004a99;">🌐 Web</a>
+                            </div>
                         </div>
-                    """),
-                    tooltip=f"{row['nome']} - {paese}"
-                ).add_to(m)
-
-    # Renderizzazione della mappa
-    st_folium(m, width=1300, height=600)
-    
-    st.caption("🔵 Aziende in regola con i pagamenti | 🟠 Aziende con pagamenti in attesa")
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Nessun socio registrato.")
+        else:
+            st.info("👈 Seleziona uno stato sulla mappa per i dettagli.")
+            st.markdown("""
+                <div style="text-align:center; opacity:0.5; margin-top:50px;">
+                    <img src="https://img.icons8.com/ios/100/africa.png" width="80">
+                    <p>Network Assafrica 2025</p>
+                </div>
+            """, unsafe_allow_html=True)
