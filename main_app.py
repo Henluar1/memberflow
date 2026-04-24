@@ -10,7 +10,7 @@ from modules.database_manager import (
     inizializza_db, leggi_soci, aggiungi_socio, 
     leggi_config, salva_config
 )
-from modules.pdf_engine import genera_catalogo 
+from modules.pdf_engine import genera_catalogo, genera_scheda_socio 
 from modules.report_generator import genera_report_dati
 import modules.ui_components as ui
 from modules.map_engine import render_mappa 
@@ -20,7 +20,7 @@ st.set_page_config(
     page_title="MemberFlow - Assafrica", 
     layout="wide", 
     page_icon="🏛️",
-    initial_sidebar_state="collapsed" # Risparmia spazio laterale all'avvio
+    initial_sidebar_state="collapsed" 
 )
 
 # Applica lo stile istituzionale e l'ottimizzazione spazi
@@ -35,12 +35,13 @@ for folder in ["loghi_soci", "exports"]:
 # Titolo compatto per integrazione web
 st.markdown(f"<h3 style='text-align: center; margin-bottom: 20px;'>🏛️ MemberFlow Assafrica</h3>", unsafe_allow_html=True)
 
-# --- NAVIGAZIONE TABS (Ora sono 6) ---
+# --- NAVIGAZIONE TABS ---
 tabs = st.tabs([
     "➕ Nuovo Socio", 
     "📋 Gestione", 
+    "💸 Amministrazione", 
     "📊 Dashboard", 
-    "📥 Export",          # <-- NUOVO TAB AGGIUNTO QUI
+    "📥 Export",          
     "🌍 Mappa Network", 
     "⚙️ Config"
 ])
@@ -53,76 +54,90 @@ with tabs[0]:
 with tabs[1]:
     ui.render_gestione()
 
-# --- TAB 3: DASHBOARD ---
+# --- TAB 3: AMMINISTRAZIONE (Solleciti) ---
 with tabs[2]:
+    ui.render_amministrazione()
+
+# --- TAB 4: DASHBOARD ---
+with tabs[3]:
     ui.render_analytics()
 
-# --- TAB 4: EXPORT DOCUMENTI (Separato) ---
-with tabs[3]:
-    st.subheader("📥 Centro Esportazione Documenti 2026")
-    st.markdown("Genera e scarica i documenti aggiornati basati sui dati attuali del database.")
-    st.write("") # Spazio extra
+# --- TAB 5: EXPORT DOCUMENTI (Unificato) ---
+with tabs[4]:
+    st.markdown("#### 📥 Centro Esportazione Documenti 2026")
+    st.markdown("Genera documenti globali o schede individuali basate sui dati attuali.")
+    st.write("") 
     
+    # Sezione 1: Export Globali
     c1, c2, c3 = st.columns(3)
     df_attuali = leggi_soci()
     
     with c1:
-        if st.button("🚀 GENERA CATALOGO PDF", use_container_width=True):
+        if st.button("🚀 CATALOGO PDF", use_container_width=True):
             if not df_attuali.empty:
-                with st.spinner("Generazione Catalogo in corso..."):
+                with st.spinner("Generazione..."):
                     file_path = genera_catalogo(df_attuali) 
-                    if os.path.exists(file_path):
-                        with open(file_path, "rb") as f:
-                            st.download_button(
-                                label="⬇️ SCARICA CATALOGO",
-                                data=f,
-                                file_name="Catalogo_Associati_Assafrica_2026.pdf",
-                                mime="application/pdf",
-                                use_container_width=True
-                            )
-            else:
-                st.error("Database vuoto.")
+                    with open(file_path, "rb") as f:
+                        st.download_button("⬇️ SCARICA CATALOGO", f, "Catalogo_Assafrica_2026.pdf", "application/pdf", use_container_width=True)
+            else: st.error("Database vuoto.")
             
     with c2:
-        if st.button("📑 GENERA REPORT PDF", use_container_width=True):
+        if st.button("📑 REPORT ANALITICO", use_container_width=True):
             if not df_attuali.empty:
-                with st.spinner("Generazione Report in corso..."):
+                with st.spinner("Analisi..."):
                     path_rep = genera_report_dati(df_attuali)
                     with open(path_rep, "rb") as f:
-                        st.download_button(
-                            label="⬇️ SCARICA REPORT", 
-                            data=f, 
-                            file_name="Analisi_Network_2026.pdf", 
-                            use_container_width=True
-                        )
-            else:
-                st.error("Database vuoto.")
+                        st.download_button("⬇️ SCARICA REPORT", f, "Report_Analisi_2026.pdf", "application/pdf", use_container_width=True)
+            else: st.error("Database vuoto.")
             
     with c3:
-        if st.button("📊 ESPORTA LISTA CSV", use_container_width=True):
+        if st.button("📊 LISTA EXCEL (CSV)", use_container_width=True):
             if not df_attuali.empty:
                 csv = df_attuali.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ SCARICA CSV", 
-                    data=csv, 
-                    file_name="anagrafica_soci.csv", 
-                    mime="text/csv", 
-                    use_container_width=True
-                )
-            else:
-                st.error("Database vuoto.")
+                st.download_button("⬇️ SCARICA CSV", csv, "export_soci.csv", "text/csv", use_container_width=True)
+            else: st.error("Database vuoto.")
 
-# --- TAB 5: MAPPA NETWORK ---
-with tabs[4]:
+    # Sezione 2: One-Pager Individuale
+    st.write("")
+    st.markdown("---")
+    st.markdown("##### 📄 Esporta Scheda Singola Socio (One-Pager)")
+    st.info("Genera un documento di presentazione istituzionale per un singolo associato.")
+    
+    if not df_attuali.empty:
+        # Ordiniamo i nomi alfabeticamente
+        nomi_soci = sorted(df_attuali['nome'].tolist())
+        
+        col_sel, col_btn = st.columns([3, 1])
+        socio_nome = col_sel.selectbox("Seleziona l'Associato", nomi_soci, label_visibility="collapsed")
+        
+        if col_btn.button("✨ GENERA ONE-PAGER", use_container_width=True):
+            socio_data = df_attuali[df_attuali['nome'] == socio_nome].iloc[0]
+            with st.spinner(f"Creazione scheda per {socio_nome}..."):
+                path_scheda = genera_scheda_socio(socio_data)
+                if os.path.exists(path_scheda):
+                    with open(path_scheda, "rb") as f:
+                        st.download_button(
+                            label=f"⬇️ SCARICA SCHEDA {socio_nome.upper()}",
+                            data=f,
+                            file_name=os.path.basename(path_scheda),
+                            mime="application/pdf",
+                            use_container_width=True,
+                            type="primary"
+                        )
+    else:
+        st.warning("Aggiungi dei soci per abilitare l'export delle schede.")
+
+# --- TAB 6: MAPPA NETWORK ---
+with tabs[5]:
     df_mappa = leggi_soci()
     if not df_mappa.empty:
         render_mappa(df_mappa)
     else:
-        st.info("Aggiungi dei soci per visualizzare la mappa.")
+        st.info("Nessun dato per la mappa.")
 
-# --- TAB 6: CONFIGURAZIONE ---
-with tabs[5]:
-    st.subheader("⚙️ Impostazioni Profilo")
+# --- TAB 7: CONFIGURAZIONE ---
+with tabs[6]:
+    st.markdown("#### ⚙️ Impostazioni Profilo")
     conf = leggi_config()
     
     with st.form("config_form"):
@@ -130,13 +145,16 @@ with tabs[5]:
         nome_ass = col1.text_input("Nome Associazione", value=conf.get('nome_associazione', 'Assafrica'))
         email_ass = col1.text_input("Email Contatto", value=conf.get('email_contatto', ''))
         indirizzo_ass = col2.text_input("Sede Legale", value=conf.get('indirizzo', ''))
-        logo_inst = st.file_uploader("Aggiorna Logo Istituzionale", type=["png", "jpg"])
+        logo_inst = st.file_uploader("Aggiorna Logo Istituzionale", type=["png", "jpg", "jpeg"])
         
         if st.form_submit_button("Salva Modifiche"):
             logo_path = conf.get('logo_istituzionale', '')
             if logo_inst:
-                logo_path = f"loghi_soci/LOGO_ISTITUZIONALE.png"
-                Image.open(logo_inst).save(logo_path)
+                if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
+                estensione = logo_inst.name.split('.')[-1].lower()
+                logo_path = f"loghi_soci/LOGO_ISTITUZIONALE.{estensione}"
+                with open(logo_path, "wb") as f:
+                    f.write(logo_inst.getbuffer())
             
             salva_config(nome_ass, logo_path, indirizzo_ass, email_ass)
             st.success("Configurazione salvata!")

@@ -2,6 +2,31 @@ import streamlit as st
 from streamlit_folium import st_folium
 import folium
 import pandas as pd
+import os
+import urllib.request
+import ssl
+
+def get_mappa_locale():
+    """Scarica il file GeoJSON in locale la prima volta, bypassando blocchi SSL"""
+    file_path = "world-countries.json"
+    
+    # Se il file non esiste sul computer, lo scarichiamo in modo forzato
+    if not os.path.exists(file_path):
+        url = "https://raw.githubusercontent.com/python-visualization/folium/master/examples/data/world-countries.json"
+        
+        # Creiamo un contesto che ignora i controlli SSL restrittivi
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        
+        try:
+            with urllib.request.urlopen(url, context=ctx) as response, open(file_path, 'wb') as out_file:
+                out_file.write(response.read())
+        except Exception as e:
+            st.error(f"Errore di rete critico: Impossibile recuperare la mappa. Dettaglio: {e}")
+            return url # Fallback estremo all'URL originale
+            
+    return file_path
 
 def render_mappa(df):
     # CSS per pulire ulteriormente i margini e rendere le card più snelle
@@ -22,7 +47,7 @@ def render_mappa(df):
         </style>
     """, unsafe_allow_html=True)
 
-    st.subheader("🌍 Network Explorer | Business Community 2025")
+    st.subheader("🌍 Network Explorer | Business Community")
     
     # 1. PREPARAZIONE DATI
     PAESI_AFRICA_LIST = [
@@ -46,6 +71,9 @@ def render_mappa(df):
 
     col_left, col_right = st.columns([0.65, 0.35])
 
+    # Otteniamo il percorso del file locale (o lo scarichiamo se è la prima volta)
+    geojson_data = get_mappa_locale()
+
     with col_left:
         # 2. MAPPA FISSA (No zoom, No dragging)
         m = folium.Map(
@@ -56,11 +84,9 @@ def render_mappa(df):
             scrollWheelZoom=False,  # Disabilita lo zoom con la rotellina
             dragging=False          # Blocca il trascinamento
         )
-        
-        geojson_url = "https://raw.githubusercontent.com/python-visualization/folium/master/examples/data/world-countries.json"
 
         folium.Choropleth(
-            geo_data=geojson_url,
+            geo_data=geojson_data, # Usiamo il file locale sicuro
             data=df_counts,
             columns=["name", "soci"],
             key_on="feature.properties.name",
@@ -73,7 +99,7 @@ def render_mappa(df):
 
         # Layer per il click
         folium.GeoJson(
-            geojson_url,
+            geojson_data, # Usiamo il file locale sicuro
             name="geojson",
             style_function=lambda x: {'fillColor': 'transparent', 'color': 'transparent', 'weight': 0},
             tooltip=folium.GeoJsonTooltip(fields=['name'], aliases=['Stato:'], localize=True)
@@ -109,12 +135,12 @@ def render_mappa(df):
                         </div>
                         """, unsafe_allow_html=True)
                 else:
-                    st.info("Nessun socio registrato.")
+                    st.info("Nessun socio registrato in quest'area.")
         else:
             st.info("👈 Seleziona uno stato sulla mappa per i dettagli.")
             st.markdown("""
                 <div style="text-align:center; opacity:0.5; margin-top:50px;">
                     <img src="https://img.icons8.com/ios/100/africa.png" width="80">
-                    <p>Network Assafrica 2025</p>
+                    <p>Network Assafrica 2026</p>
                 </div>
             """, unsafe_allow_html=True)

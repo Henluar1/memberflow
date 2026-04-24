@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import os
+import urllib.parse
 from PIL import Image
 from modules.database_manager import leggi_soci, aggiorna_socio, elimina_socio, aggiungi_socio
 
@@ -25,7 +26,8 @@ CATEGORIE_REAL = [
 ]
 
 def render_form_inserimento():
-    st.subheader("📝 Registra nuova Azienda dal Catalogo")
+    st.markdown("#### 📝 Registra nuova Azienda dal Catalogo")
+    
     tab1, tab2 = st.tabs(["Inserimento Singolo", "Importazione Massiva (Excel)"])
     
     with tab1:
@@ -38,28 +40,41 @@ def render_form_inserimento():
             web = c2.text_input("Sito Web")
             pagato = c2.selectbox("Stato Socio", ["Pagato", "In attesa"])
             
-            st.write("---")
-            st.write("🌍 **Operatività in Africa**")
-            tutto_continente = st.toggle("Opera in tutto il continente (Pan-Africana)")
-            paesi_selezionati = ["Tutta l'Africa"] if tutto_continente else st.multiselect("Seleziona Paesi specifici", PAESI_AFRICA)
+            st.markdown("<hr style='margin: 0.5em 0;'>", unsafe_allow_html=True)
             
-            st.write("---")
-            st.write("🖼️ **Logo Aziendale**")
-            logo_file = st.file_uploader("Carica file locale (PNG/JPG)", type=["png", "jpg", "jpeg"])
+            c3, c4 = st.columns(2)
             
-            desc = st.text_area("Descrizione attività")
+            with c3:
+                st.markdown("**🌍 Operatività in Africa**")
+                tutto_continente = st.toggle("Opera in tutto il continente (Pan-Africana)")
+                paesi_selezionati = ["Tutta l'Africa"] if tutto_continente else st.multiselect(
+                    "Seleziona Paesi", PAESI_AFRICA, label_visibility="collapsed"
+                )
             
-            if st.form_submit_button("SALVA NEL DATABASE"):
+            with c4:
+                st.markdown("**🖼️ Logo Aziendale**")
+                logo_file = st.file_uploader(
+                    "Carica logo", type=["png", "jpg", "jpeg"], label_visibility="collapsed"
+                )
+            
+            st.markdown("<hr style='margin: 0.5em 0;'>", unsafe_allow_html=True)
+            desc = st.text_area("Descrizione attività (Breve per il catalogo)", height=100)
+            
+            if st.form_submit_button("💾 SALVA NEL DATABASE", type="primary", use_container_width=True):
                 if nome and paesi_selezionati:
                     path_finale = ""
                     if logo_file:
-                        if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
-                        path_finale = f"loghi_soci/{nome.replace(' ', '_').upper()}.png"
-                        Image.open(logo_file).save(path_finale)
+                        if not os.path.exists("loghi_soci"): 
+                            os.makedirs("loghi_soci")
+                        nome_sicuro = "".join(x for x in nome if x.isalnum() or x in " ").replace(' ', '_').upper()
+                        est = logo_file.name.split('.')[-1].lower()
+                        path_finale = f"loghi_soci/{nome_sicuro}.{est}"
+                        with open(path_finale, "wb") as f:
+                            f.write(logo_file.getbuffer())
                     
                     stringa_paesi = ",".join(paesi_selezionati)
                     aggiungi_socio(nome, cat, ref, mail, web, desc, path_finale, pagato, stringa_paesi)
-                    st.success(f"Azienda {nome} aggiunta con successo!")
+                    st.success(f"✅ Azienda {nome} aggiunta con successo!")
                     st.rerun()
 
     with tab2:
@@ -108,75 +123,105 @@ def render_form_inserimento():
                     st.rerun()
 
 def render_gestione():
+    st.markdown("#### 📋 Gestione Massiva Anagrafiche")
     df = leggi_soci()
+    
     if not df.empty:
-        st.subheader("📋 Gestione Anagrafiche e Loghi")
-        cerca = st.text_input("🔍 Cerca socio", placeholder="Es: Eni, Energia...")
-        if cerca:
-            df = df[df['nome'].str.contains(cerca, case=False) | df['categoria'].str.contains(cerca, case=False)]
+        st.info("💡 Usa la tabella per modifiche rapide ai testi. Per i loghi, usa la sezione sottostante.")
         
-        for i, row in df.iterrows():
-            with st.expander(f"🏢 {row['nome']} ({row['categoria']})"):
-                c1, c2 = st.columns(2)
-                new_nome = c1.text_input("Ragione Sociale", value=row['nome'], key=f"n_{row['id']}")
-                idx_cat = CATEGORIE_REAL.index(row['categoria']) if row['categoria'] in CATEGORIE_REAL else 0
-                new_cat = c1.selectbox("Settore", CATEGORIE_REAL, index=idx_cat, key=f"c_{row['id']}")
-                new_ref = c1.text_input("Referente Assafrica", value=row['referente'], key=f"r_{row['id']}")
-                new_mail = c2.text_input("Email", value=row['email'], key=f"e_{row['id']}")
-                new_web = c2.text_input("Sito Web", value=row['sito'], key=f"w_{row['id']}")
-                new_pag = c2.selectbox("Stato", ["Pagato", "In attesa"], 
-                                       index=0 if row['pagato'] == "Pagato" else 1, key=f"p_{row['id']}")
-                
-                st.write("---")
-                st.write("🖼️ **Gestione Logo**")
-                
-                logo_path = row['logo_path']
-                # Layout centrato per il logo (importante per MAIRE)
-                col_sx, col_centro, col_dx = st.columns([1, 2, 1])
-                
-                if logo_path and os.path.exists(logo_path):
-                    col_centro.image(logo_path, use_container_width=True)
-                else:
-                    col_centro.warning("Nessun logo caricato")
-                
-                new_logo_file = st.file_uploader("Sostituisci file logo (PNG/JPG)", type=["png", "jpg", "jpeg"], key=f"up_{row['id']}")
-                
-                st.write("---")
-                current_paesi = str(row['sede']).split(",") if row['sede'] else []
-                is_all_africa = "Tutta l'Africa" in current_paesi
-                togg = st.toggle("Opera in tutta l'Africa", value=is_all_africa, key=f"togg_{row['id']}")
-                
-                if togg:
-                    new_paesi_str = "Tutta l'Africa"
-                else:
-                    defaults = [p.strip() for p in current_paesi if p.strip() in PAESI_AFRICA]
-                    sel = st.multiselect("Modifica Paesi", PAESI_AFRICA, default=defaults, key=f"ms_{row['id']}")
-                    new_paesi_str = ",".join(sel)
-                
-                new_desc = st.text_area("Descrizione attività", value=row['descrizione'], key=f"d_{row['id']}")
-                
-                b1, b2 = st.columns(2)
-                if b1.button("💾 SALVA MODIFICHE", key=f"save_{row['id']}", use_container_width=True):
-                    path_finale = logo_path
-                    if new_logo_file:
-                        if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
-                        path_finale = f"loghi_soci/{new_nome.replace(' ', '_').upper()}.png"
-                        Image.open(new_logo_file).save(path_finale)
+        edited_df = st.data_editor(
+            df,
+            column_config={
+                "id": st.column_config.NumberColumn("ID", disabled=True),
+                "logo_path": st.column_config.TextColumn("Path Logo", disabled=True),
+                "nome": st.column_config.TextColumn("Ragione Sociale", width="medium"),
+                "categoria": st.column_config.SelectboxColumn("Settore", options=CATEGORIE_REAL),
+                "pagato": st.column_config.SelectboxColumn("Stato", options=["Pagato", "In attesa"]),
+                "sito": st.column_config.LinkColumn("Sito Web"),
+                "sede": st.column_config.TextColumn("Operatività")
+            },
+            hide_index=True,
+            use_container_width=True,
+            num_rows="dynamic",
+            height=400
+        )
+
+        if st.button("💾 SALVA MODIFICHE TABELLA", type="primary"):
+            for _, row in edited_df.iterrows():
+                if pd.notna(row.get('id')):
+                    aggiorna_socio(
+                        row['id'], row['nome'], row['categoria'], row['referente'], 
+                        row['email'], row['sito'], row['descrizione'], 
+                        row['logo_path'], row['pagato'], row['sede']
+                    )
+            st.success("Dati testuali aggiornati!")
+            st.rerun()
+
+        st.divider()
+
+        st.markdown("#### 🖼️ Media Manager: Caricamento Loghi")
+        with st.expander("Sviluppa per caricare o cambiare un logo"):
+            col_sel, col_up = st.columns([1, 1])
+            
+            nomi_soci = df['nome'].tolist()
+            azienda_scelta = col_sel.selectbox("Seleziona Azienda", nomi_soci)
+            
+            socio_target = df[df['nome'] == azienda_scelta].iloc[0]
+            logo_attuale = socio_target.get('logo_path', '')
+            
+            if pd.notna(logo_attuale) and str(logo_attuale).strip() != "" and os.path.exists(str(logo_attuale)):
+                col_sel.image(str(logo_attuale), caption="Logo attuale", width=200)
+            else:
+                col_sel.warning("Nessun logo presente.")
+            
+            nuovo_logo = col_up.file_uploader(f"Carica nuovo logo per {azienda_scelta}", type=["png", "jpg", "jpeg"])
+            
+            if col_up.button("CONFERMA NUOVO LOGO"):
+                if nuovo_logo is not None:
+                    if not os.path.exists("loghi_soci"): 
+                        os.makedirs("loghi_soci")
                         
-                    aggiorna_socio(row['id'], new_nome, new_cat, new_ref, new_mail, new_web, new_desc, path_finale, new_pag, new_paesi_str)
-                    st.success("Dati aggiornati con successo!")
-                    st.rerun()
-                
-                if b2.button("🗑️ ELIMINA AZIENDA", key=f"del_{row['id']}", use_container_width=True):
-                    elimina_socio(row['id'])
-                    st.rerun()
+                    nome_sicuro = "".join(x for x in azienda_scelta if x.isalnum() or x in " ").replace(' ', '_').upper()
+                    estensione = nuovo_logo.name.split('.')[-1].lower()
+                    path_nuovo = f"loghi_soci/{nome_sicuro}.{estensione}"
+                    
+                    with open(path_nuovo, "wb") as f:
+                        f.write(nuovo_logo.getbuffer())
+                    
+                    try:
+                        aggiorna_socio(
+                            int(socio_target['id']), 
+                            str(socio_target['nome']), 
+                            str(socio_target['categoria']), 
+                            str(socio_target['referente']), 
+                            str(socio_target['email']), 
+                            str(socio_target['sito']), 
+                            str(socio_target['descrizione']), 
+                            path_nuovo, 
+                            str(socio_target['pagato']), 
+                            str(socio_target['sede'])
+                        )
+                        st.success(f"✅ Logo di {azienda_scelta} aggiornato correttamente!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Errore durante l'aggiornamento del database: {e}")
+                else:
+                    col_up.error("Devi prima selezionare un file!")
+
+        st.divider()
+        
+        with st.expander("🗑️ Zona Pericolo (Eliminazione)"):
+            id_del = st.number_input("ID Socio da rimuovere", step=1, value=0)
+            if st.button("ELIMINA DEFINITIVAMENTE"):
+                elimina_socio(id_del)
+                st.rerun()
     else:
         st.info("Database vuoto.")
 
 def render_analytics():
     df = leggi_soci()
     if not df.empty:
-        st.subheader("📊 Business Intelligence & Macro-Trend Africa")
+        st.markdown("#### 📊 Business Intelligence & Macro-Trend Africa")
         
         lista_paesi_flat = []
         heatmap_data = []
@@ -233,3 +278,59 @@ def render_analytics():
         fig_pay = px.histogram(df, x="categoria", color="pagato", barmode="group",
                                color_discrete_map={'Pagato': '#2E86C1', 'In attesa': '#E67E22'})
         st.plotly_chart(fig_pay, use_container_width=True)
+
+def render_amministrazione():
+    st.markdown("#### 💸 Amministrazione e Solleciti")
+    df = leggi_soci()
+    
+    if not df.empty:
+        df_attesa = df[df['pagato'] == 'In attesa']
+        
+        c1, c2 = st.columns([1, 3])
+        c1.metric("Da sollecitare", len(df_attesa))
+        
+        st.divider()
+        
+        if not df_attesa.empty:
+            st.info("💡 Clicca su 'Invia Sollecito' per aprire il tuo programma di posta con un'email precompilata pronta da inviare.")
+            
+            col1, col2, col3, col4 = st.columns([3, 2, 2.5, 2])
+            col1.markdown("**🏢 Azienda**")
+            col2.markdown("**👤 Referente**")
+            col3.markdown("**📧 Email**")
+            col4.markdown("**⚡ Azione**")
+            
+            for _, row in df_attesa.iterrows():
+                col1, col2, col3, col4 = st.columns([3, 2, 2.5, 2])
+                
+                col1.write(row['nome'])
+                col2.write(row['referente'] if pd.notna(row['referente']) else "Non specificato")
+                col3.write(row['email'] if pd.notna(row['email']) else "N/A")
+                
+                with col4:
+                    if pd.notna(row['email']) and str(row['email']).strip() != "":
+                        oggetto = urllib.parse.quote("Confindustria Assafrica & Mediterraneo - Sollecito Quota Associativa 2026")
+                        nome_ref = str(row['referente']) if pd.notna(row['referente']) else "Responsabile"
+                        
+                        corpo = urllib.parse.quote(
+                            f"Gentile {nome_ref},\n\n"
+                            f"Con la presente le ricordiamo che la quota associativa per l'azienda {row['nome']} "
+                            f"risulta attualmente 'In attesa' di saldo.\n\n"
+                            f"La preghiamo di provvedere al più presto per garantire la continuità dei servizi "
+                            f"e l'inserimento nel Catalogo Ufficiale 2026.\n\n"
+                            f"Restiamo a disposizione per qualsiasi chiarimento.\n\n"
+                            f"Cordiali saluti,\n"
+                            f"Segreteria Assafrica"
+                        )
+                        
+                        mailto_link = f"mailto:{row['email']}?subject={oggetto}&body={corpo}"
+                        st.link_button("✉️ INVIA SOLLECITO", mailto_link, use_container_width=True)
+                    else:
+                        st.button("Manca Email", disabled=True, key=f"dis_{row['id']}", use_container_width=True)
+                
+                st.markdown("<hr style='margin: 0px; opacity: 0.2;'>", unsafe_allow_html=True)
+                
+        else:
+            st.success("🎉 Grandioso! Tutte le aziende risultano in regola con i pagamenti.")
+    else:
+        st.info("Database vuoto.")
