@@ -4,35 +4,19 @@ from modules.database_manager import leggi_config
 
 class CatalogoPDF(FPDF):
     def header(self):
+        # Header minimale: Logo istituzionale in alto a destra se esiste
         conf = leggi_config()
         logo_inst = conf.get('logo_istituzionale', '')
-        nome_ass = conf.get('nome_associazione', 'Associazione')
-
+        
         if logo_inst and os.path.exists(logo_inst):
-            self.image(logo_inst, 10, 8, 25)
-            self.set_x(40)
-        else:
-            self.set_x(10)
-
-        self.set_font("helvetica", "B", 12)
-        self.set_text_color(0, 45, 90)
-        self.cell(0, 10, nome_ass.upper(), ln=False, align="L")
-        
-        self.set_font("helvetica", "B", 8)
-        self.set_text_color(150)
-        self.cell(0, 10, "CATALOGO UFFICIALE 2026", ln=True, align="R")
-        self.ln(10)
-
+            self.image(logo_inst, 260, 8, 22) # Posizionato in alto a dx
+            
     def footer(self):
-        conf = leggi_config()
-        indirizzo = conf.get('indirizzo', '')
-        email = conf.get('email_contatto', '')
-        
-        self.set_y(-15)
-        self.set_font("helvetica", "I", 7)
-        self.set_text_color(120)
-        info_footer = f"{indirizzo} | {email}" if indirizzo else "Documento Istituzionale"
-        self.cell(0, 10, f"{info_footer} - Pagina {self.page_no()}", align="C")
+        # Piè di pagina in stile originale "- Numero -"
+        self.set_y(-12)
+        self.set_font("helvetica", "", 9)
+        self.set_text_color(100, 100, 100)
+        self.cell(0, 10, f"- {self.page_no()} -", align="C")
         
 def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
     pdf = CatalogoPDF(orientation='L', unit='mm', format='A4')
@@ -43,107 +27,110 @@ def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
     
     # --- 1. INDICE ---
     pdf.add_page()
-    pdf.set_font("helvetica", "B", 24)
+    pdf.set_font("helvetica", "B", 16)
     pdf.set_text_color(0, 45, 90)
-    pdf.cell(0, 20, "INDICE", ln=True, align="C")
-    pdf.ln(10)
+    pdf.cell(0, 20, "INDICE", ln=True, align="L")
+    pdf.ln(5)
     
     links = {}
-    current_p = 2
+    current_p = 2 # Pagina 1 è l'indice, i dati iniziano a pag 2
     for cat in categorie:
         links[cat] = pdf.add_link()
-        pdf.set_font("helvetica", "", 11)
-        pdf.set_text_color(0, 45, 90)
-        pdf.write(10, cat.upper(), link=links[cat])
+        pdf.set_font("helvetica", "", 10)
+        pdf.set_text_color(50, 50, 50)
+        pdf.write(8, cat.upper(), link=links[cat])
         
+        # Punti di riempimento per l'indice
         x_curr = pdf.get_x() + 3
-        pdf.set_draw_color(200)
-        for i in range(int(x_curr), 270, 3):
-            pdf.line(i, pdf.get_y() + 7, i + 1, pdf.get_y() + 7)
+        pdf.set_draw_color(220, 220, 220)
+        for i in range(int(x_curr), 275, 4):
+            pdf.line(i, pdf.get_y() + 5, i + 1, pdf.get_y() + 5)
             
-        pdf.set_x(272)
-        pdf.set_font("helvetica", "B", 11)
-        pdf.cell(15, 10, str(current_p), align="R", ln=True)
+        pdf.set_x(277)
+        pdf.set_font("helvetica", "B", 10)
+        pdf.cell(10, 8, str(current_p), align="R", ln=True)
         
+        # Calcolo pagine occupate da questa categoria (6 schede per pagina)
         num_soci = len(df_soci[df_soci['categoria'] == cat])
-        current_p += (num_soci + 7) // 8
+        current_p += (num_soci + 5) // 6
 
-    # --- 2. SCHEDE (Griglia 4x2) ---
+    # --- 2. SCHEDE (Griglia 3x2 come originale) ---
     current_cat = None
-    box_w, box_h = 66, 82
-    margin_x, margin_y_start = 15, 45
-    spacing_x, spacing_y = 4, 4
+    page_in_cat = 1
+    
+    # Dimensioni calcolate per A4 Orizzontale (297x210)
+    box_w, box_h = 85, 76
+    margin_x, margin_y_start = 15, 30
+    spacing_x, spacing_y = 6, 8
 
     for i, (_, row) in enumerate(df_soci.iterrows()):
+        # Nuova Categoria
         if row['categoria'] != current_cat:
             current_cat = row['categoria']
+            page_in_cat = 1
+            i_cat = 0
+            
             pdf.add_page()
             pdf.set_link(links[current_cat])
             
-            pdf.set_font("helvetica", "B", 18)
-            pdf.set_text_color(0, 45, 90)
-            pdf.cell(0, 10, current_cat.upper(), ln=True)
-            
-            pdf.set_draw_color(184, 151, 93)
-            pdf.set_line_width(0.8)
-            pdf.line(15, 38, 282, 38)
-            i_cat = 0
+            # Intestazione Categoria in alto a sinistra (es. AGROALIMENTARE / 1)
+            pdf.set_font("helvetica", "B", 11)
+            pdf.set_text_color(100, 100, 100)
+            pdf.set_xy(15, 15)
+            pdf.cell(0, 10, f"{current_cat.upper()} / {page_in_cat}", ln=True)
         
-        pos_in_page = i_cat % 8
+        # Gestione Nuova Pagina all'interno della stessa categoria
+        pos_in_page = i_cat % 6
         if pos_in_page == 0 and i_cat > 0:
             pdf.add_page()
-            pdf.set_font("helvetica", "B", 12)
-            pdf.set_text_color(150)
-            pdf.cell(0, 10, f"{current_cat.upper()} (segue)", ln=True)
-            pdf.ln(5)
+            page_in_cat += 1
+            pdf.set_font("helvetica", "B", 11)
+            pdf.set_text_color(100, 100, 100)
+            pdf.set_xy(15, 15)
+            pdf.cell(0, 10, f"{current_cat.upper()} / {page_in_cat}", ln=True)
 
-        col = pos_in_page % 4
-        fila = pos_in_page // 4
+        col = pos_in_page % 3
+        fila = pos_in_page // 3
         
         x = margin_x + (col * (box_w + spacing_x))
         y = margin_y_start + (fila * (box_h + spacing_y))
         
-        pdf.set_fill_color(252, 252, 252)
-        pdf.set_draw_color(220)
-        pdf.set_line_width(0.1)
-        pdf.rect(x, y, box_w, box_h, 'FD')
+        # Disegno la Card (Bordo grigio spesso, niente riempimento)
+        pdf.set_fill_color(255, 255, 255)
+        pdf.set_draw_color(225, 225, 225) # Grigio chiaro
+        pdf.set_line_width(1.5) # Bordo spesso
+        pdf.rect(x, y, box_w, box_h, 'DF')
         
-        # --- LOGO CENTRATO DINAMICAMENTE ---
+        # --- LOGO CENTRATO IN ALTO ---
         if row['logo_path'] and os.path.exists(row['logo_path']):
-            # Definiamo una larghezza massima per il logo nel box (es. 40mm)
-            w_max = 40
-            # Calcoliamo la X per centrare w_max nel box_w
-            # x_box + (box_width - image_width) / 2
+            w_max = 45 # Larghezza fissa ragionevole per loghi
             x_logo = x + (box_w - w_max) / 2
-            # Inseriamo l'immagine: FPDF centrerà l'immagine dentro w_max se h=0 e usiamo i parametri corretti
-            pdf.image(row['logo_path'], x=x_logo, y=y + 7, w=w_max)
+            pdf.image(row['logo_path'], x=x_logo, y=y + 5, w=w_max)
         else:
             pdf.set_xy(x + 2, y + 15)
-            pdf.set_font("helvetica", "B", 9)
+            pdf.set_font("helvetica", "B", 12)
             pdf.set_text_color(0, 45, 90)
-            pdf.multi_cell(box_w - 4, 4, str(row['nome']).upper(), align="C")
+            pdf.multi_cell(box_w - 4, 5, str(row['nome']).upper(), align="C")
 
-        # DESCRIZIONE
-        pdf.set_xy(x + 4, y + 38) # Abbassato leggermente per dare aria ai loghi orizzontali
-        pdf.set_font("helvetica", "", 8)
-        pdf.set_text_color(60)
+        # --- DESCRIZIONE CENTRATA ---
+        pdf.set_xy(x + 5, y + 32) # Ancoraggio fisso al centro della card
+        pdf.set_font("helvetica", "", 8.5)
+        pdf.set_text_color(40, 40, 40)
         testo = str(row['descrizione'])
-        if len(testo) > 180: testo = testo[:177] + "..."
-        pdf.multi_cell(box_w - 8, 3.5, testo, align="C")
+        if len(testo) > 160: testo = testo[:157] + "..."
+        pdf.multi_cell(box_w - 10, 4, testo, align="C")
 
-        # CONTATTI
-        pdf.set_xy(x + 2, y + 68) # Ancoraggio fisso
-        pdf.set_font("helvetica", "B", 7)
-        pdf.set_text_color(0, 45, 90)
-        pdf.cell(box_w - 4, 4, f"REF: {str(row['referente']).upper()}", ln=True, align="C")
+        # --- CONTATTI ALLINEATI A SINISTRA (In Basso) ---
+        pdf.set_xy(x + 6, y + 56) # Ancoraggio fisso in basso
+        pdf.set_font("helvetica", "", 8)
+        pdf.set_text_color(40, 40, 40)
+        pdf.cell(box_w - 12, 4.5, f"Referente A&M: {str(row['referente'])}", ln=True, align="L")
         
-        pdf.set_font("helvetica", "", 7)
-        pdf.set_text_color(100)
-        pdf.set_x(x + 2)
-        pdf.cell(box_w - 4, 3.5, str(row['email']).lower(), ln=True, align="C")
-        pdf.set_x(x + 2)
-        pdf.set_text_color(0, 74, 153)
-        pdf.cell(box_w - 4, 3.5, str(row['sito']).lower(), align="C")
+        pdf.set_x(x + 6)
+        pdf.cell(box_w - 12, 4.5, str(row['email']).lower(), ln=True, align="L")
+        
+        pdf.set_x(x + 6)
+        pdf.cell(box_w - 12, 4.5, str(row['sito']).lower(), align="L")
         
         i_cat += 1
     
