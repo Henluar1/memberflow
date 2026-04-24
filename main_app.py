@@ -1,28 +1,36 @@
 import streamlit as st
 import os
-from PIL import Image # <--- MANCAVA QUESTO
+from PIL import Image
 
-# Importiamo esplicitamente le funzioni necessarie
+# Importiamo le funzioni dai moduli
 from modules.database_manager import (
     inizializza_db, leggi_soci, aggiungi_socio, 
-    leggi_config, salva_config # <--- MANCAVANO QUESTI
+    leggi_config, salva_config
 )
 from modules.pdf_engine import genera_catalogo
 from modules.report_generator import genera_report_dati
 import modules.ui_components as ui
+from modules.map_engine import render_mappa  # <--- Nuova integrazione
 
-# Setup Iniziale
-st.set_page_config(page_title="Assafrica Pro", layout="wide", page_icon="🏛️")
+# --- SETUP INIZIALE ---
+st.set_page_config(page_title="MemberFlow - Assafrica", layout="wide", page_icon="🏛️")
 inizializza_db()
 
-# Creazione cartella loghi se non esiste
+# Assicuriamoci che la cartella loghi esista
 if not os.path.exists("loghi_soci"):
     os.makedirs("loghi_soci")
 
-st.title("🏛️ Assafrica & Community Manager")
+st.title("🏛️ MemberFlow: Assafrica & Community Manager")
 
-# Navigazione
-tabs = st.tabs(["➕ Nuovo Socio", "📋 Gestione", "📊 Analytics", "⚙️ Configurazione", "📑 Export"])
+# --- NAVIGAZIONE TABS (Ora sono 6) ---
+tabs = st.tabs([
+    "➕ Nuovo Socio", 
+    "📋 Gestione", 
+    "📊 Analytics", 
+    "🌍 Mappa Network", # <--- Nuova Tab
+    "⚙️ Configurazione", 
+    "📑 Export"
+])
 
 # --- TAB 1: NUOVO SOCIO ---
 with tabs[0]:
@@ -57,10 +65,18 @@ with tabs[2]:
                 csv = df_attuali.to_csv(index=False).encode('utf-8')
                 st.download_button("⬇️ Scarica CSV per Excel", csv, "lista_soci.csv", "text/csv")
 
-# --- TAB 4: CONFIGURAZIONE ---
+# --- TAB 4: MAPPA NETWORK ---
 with tabs[3]:
+    df_mappa = leggi_soci()
+    if not df_mappa.empty:
+        render_mappa(df_mappa)
+    else:
+        st.info("Aggiungi dei soci nel database per visualizzare la distribuzione geografica sulla mappa.")
+
+# --- TAB 5: CONFIGURAZIONE ---
+with tabs[4]:
     st.subheader("⚙️ Profilo Associazione")
-    conf = leggi_config() # Ora importata correttamente
+    conf = leggi_config()
     
     with st.form("config_form"):
         col1, col2 = st.columns(2)
@@ -76,11 +92,11 @@ with tabs[3]:
                 Image.open(logo_inst).save(logo_path)
             
             salva_config(nome_ass, logo_path, indirizzo_ass, email_ass)
-            st.success("Configurazione salvata! I prossimi PDF useranno questi dati.")
+            st.success("Configurazione salvata con successo!")
             st.rerun()
 
-# --- TAB 5: EXPORT ---
-with tabs[4]:
+# --- TAB 6: EXPORT ---
+with tabs[5]:
     st.subheader("📑 Esportazione Catalogo")
     if st.button("🚀 GENERA CATALOGO COMPLETO"):
         df_exp = leggi_soci()
