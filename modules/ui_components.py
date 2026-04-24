@@ -99,7 +99,7 @@ def render_form_inserimento():
                             get_smart_val(row, ['email', 'mail'], ""), 
                             get_smart_val(row, ['sito', 'web', 'url'], ""), 
                             get_smart_val(row, ['descrizione', 'attività'], ""), 
-                            "", # I loghi si caricano dopo via Gestione
+                            "", 
                             "Pagato", 
                             get_smart_val(row, ['sede', 'paesi', 'operatività'], "Tutta l'Africa")
                         )
@@ -129,15 +129,17 @@ def render_gestione():
                 
                 st.write("---")
                 st.write("🖼️ **Gestione Logo**")
-                col_img, col_edit = st.columns([0.3, 0.7])
                 
                 logo_path = row['logo_path']
-                if logo_path and os.path.exists(logo_path):
-                    col_img.image(logo_path, width=120)
-                else:
-                    col_img.warning("Nessun logo caricato")
+                # Layout centrato per il logo (importante per MAIRE)
+                col_sx, col_centro, col_dx = st.columns([1, 2, 1])
                 
-                new_logo_file = col_edit.file_uploader("Sostituisci file logo", type=["png", "jpg", "jpeg"], key=f"up_{row['id']}")
+                if logo_path and os.path.exists(logo_path):
+                    col_centro.image(logo_path, use_container_width=True)
+                else:
+                    col_centro.warning("Nessun logo caricato")
+                
+                new_logo_file = st.file_uploader("Sostituisci file logo (PNG/JPG)", type=["png", "jpg", "jpeg"], key=f"up_{row['id']}")
                 
                 st.write("---")
                 current_paesi = str(row['sede']).split(",") if row['sede'] else []
@@ -172,7 +174,6 @@ def render_gestione():
         st.info("Database vuoto.")
 
 def render_analytics():
-    # ... (Restra uguale, mostra le Dashboard di Business Intelligence)
     df = leggi_soci()
     if not df.empty:
         st.subheader("📊 Business Intelligence & Macro-Trend Africa")
