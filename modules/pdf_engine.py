@@ -35,7 +35,6 @@ class CatalogoPDF(FPDF):
         self.cell(0, 10, f"{info_footer} - Pagina {self.page_no()}", align="C")
         
 def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
-    # Setup Orizzontale (Landscape)
     pdf = CatalogoPDF(orientation='L', unit='mm', format='A4')
     pdf.set_auto_page_break(auto=True, margin=15)
     
@@ -57,7 +56,6 @@ def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
         pdf.set_text_color(0, 45, 90)
         pdf.write(10, cat.upper(), link=links[cat])
         
-        # Leader lines
         x_curr = pdf.get_x() + 3
         pdf.set_draw_color(200)
         for i in range(int(x_curr), 270, 3):
@@ -72,12 +70,11 @@ def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
 
     # --- 2. SCHEDE (Griglia 4x2) ---
     current_cat = None
-    # Dimensioni box fisse
     box_w, box_h = 66, 82
     margin_x, margin_y_start = 15, 45
     spacing_x, spacing_y = 4, 4
 
-    for _, row in df_soci.iterrows():
+    for i, (_, row) in enumerate(df_soci.iterrows()):
         if row['categoria'] != current_cat:
             current_cat = row['categoria']
             pdf.add_page()
@@ -87,18 +84,14 @@ def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
             pdf.set_text_color(0, 45, 90)
             pdf.cell(0, 10, current_cat.upper(), ln=True)
             
-            # Linea oro sotto il titolo categoria
             pdf.set_draw_color(184, 151, 93)
             pdf.set_line_width(0.8)
             pdf.line(15, 38, 282, 38)
             i_cat = 0
         
-        # Calcolo posizione X e Y
-        # i_cat % 8 determina la posizione nella pagina (0-7)
         pos_in_page = i_cat % 8
         if pos_in_page == 0 and i_cat > 0:
             pdf.add_page()
-            # Ripetiamo il titolo categoria sulle pagine successive
             pdf.set_font("helvetica", "B", 12)
             pdf.set_text_color(150)
             pdf.cell(0, 10, f"{current_cat.upper()} (segue)", ln=True)
@@ -110,35 +103,36 @@ def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
         x = margin_x + (col * (box_w + spacing_x))
         y = margin_y_start + (fila * (box_h + spacing_y))
         
-        # DISEGNO BOX (sfondo leggero per staccare le schede)
         pdf.set_fill_color(252, 252, 252)
         pdf.set_draw_color(220)
         pdf.set_line_width(0.1)
         pdf.rect(x, y, box_w, box_h, 'FD')
         
-        # LOGO O TITOLO (Ancoraggio Y + 5)
+        # --- LOGO CENTRATO DINAMICAMENTE ---
         if row['logo_path'] and os.path.exists(row['logo_path']):
-            # Image(path, x, y, w, h) -> h=0 mantiene proporzioni
-            pdf.image(row['logo_path'], x + (box_w-35)/2, y + 5, 35)
+            # Definiamo una larghezza massima per il logo nel box (es. 40mm)
+            w_max = 40
+            # Calcoliamo la X per centrare w_max nel box_w
+            # x_box + (box_width - image_width) / 2
+            x_logo = x + (box_w - w_max) / 2
+            # Inseriamo l'immagine: FPDF centrerà l'immagine dentro w_max se h=0 e usiamo i parametri corretti
+            pdf.image(row['logo_path'], x=x_logo, y=y + 7, w=w_max)
         else:
-            pdf.set_xy(x + 2, y + 10)
+            pdf.set_xy(x + 2, y + 15)
             pdf.set_font("helvetica", "B", 9)
             pdf.set_text_color(0, 45, 90)
             pdf.multi_cell(box_w - 4, 4, str(row['nome']).upper(), align="C")
 
-        # DESCRIZIONE (Ancoraggio Y + 35 fiso)
-        pdf.set_xy(x + 4, y + 35)
+        # DESCRIZIONE
+        pdf.set_xy(x + 4, y + 38) # Abbassato leggermente per dare aria ai loghi orizzontali
         pdf.set_font("helvetica", "", 8)
         pdf.set_text_color(60)
         testo = str(row['descrizione'])
-        # Limite caratteri rigoroso per non rompere il layout
         if len(testo) > 180: testo = testo[:177] + "..."
-        # multi_cell(w, h, txt)
         pdf.multi_cell(box_w - 8, 3.5, testo, align="C")
 
-        # CONTATTI (Ancoraggio al fondo del box Y + 65)
-        # Usiamo set_xy per forzare la posizione indipendentemente dalla descrizione
-        pdf.set_xy(x + 2, y + 65)
+        # CONTATTI
+        pdf.set_xy(x + 2, y + 68) # Ancoraggio fisso
         pdf.set_font("helvetica", "B", 7)
         pdf.set_text_color(0, 45, 90)
         pdf.cell(box_w - 4, 4, f"REF: {str(row['referente']).upper()}", ln=True, align="C")
@@ -148,7 +142,7 @@ def genera_catalogo(df_soci, output_name="Catalogo_Associati_2026.pdf"):
         pdf.set_x(x + 2)
         pdf.cell(box_w - 4, 3.5, str(row['email']).lower(), ln=True, align="C")
         pdf.set_x(x + 2)
-        pdf.set_text_color(0, 74, 153) # Blu per il link
+        pdf.set_text_color(0, 74, 153)
         pdf.cell(box_w - 4, 3.5, str(row['sito']).lower(), align="C")
         
         i_cat += 1
