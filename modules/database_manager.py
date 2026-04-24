@@ -6,7 +6,7 @@ DB_PATH = "database_soci.db"
 
 def inizializza_db():
     with sqlite3.connect(DB_PATH) as conn:
-        # Tabella Soci con colonna 'sede' (per i paesi africani)
+        # Tabella Soci
         conn.execute('''CREATE TABLE IF NOT EXISTS soci 
                      (id INTEGER PRIMARY KEY AUTOINCREMENT, 
                       nome TEXT, categoria TEXT, referente TEXT, 
@@ -14,20 +14,30 @@ def inizializza_db():
                       logo_path TEXT, pagato TEXT, 
                       sede TEXT)''')
         
-        # Tabella Configurazione
+        # Tabella Configurazione aggiornata con logo_negativo
         conn.execute('''CREATE TABLE IF NOT EXISTS configurazione 
-                     (id INTEGER PRIMARY KEY, nome_associazione TEXT, 
-                      logo_istituzionale TEXT, indirizzo TEXT, email_contatto TEXT)''')
+                     (id INTEGER PRIMARY KEY, 
+                      nome_associazione TEXT, 
+                      logo_istituzionale TEXT, 
+                      logo_negativo TEXT,
+                      indirizzo TEXT, 
+                      email_contatto TEXT)''')
         
-        # Inseriamo una riga vuota se non esiste
+        # Migrazione: aggiunge la colonna se il DB esiste già ma è vecchio
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(configurazione)")
+        colonne = [info[1] for info in cursor.fetchall()]
+        if "logo_negativo" not in colonne:
+            conn.execute("ALTER TABLE configurazione ADD COLUMN logo_negativo TEXT")
+        
         conn.execute("INSERT OR IGNORE INTO configurazione (id, nome_associazione) VALUES (1, 'Assafrica')")
         conn.commit()
 
-def salva_config(nome, logo, indirizzo, email):
+def salva_config(nome, logo_std, logo_neg, indirizzo, email):
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""UPDATE configurazione SET 
-                     nome_associazione=?, logo_istituzionale=?, indirizzo=?, email_contatto=? 
-                     WHERE id=1""", (nome, logo, indirizzo, email))
+                     nome_associazione=?, logo_istituzionale=?, logo_negativo=?, indirizzo=?, email_contatto=? 
+                     WHERE id=1""", (nome, logo_std, logo_neg, indirizzo, email))
         conn.commit()
 
 def leggi_config():
@@ -41,17 +51,13 @@ def leggi_soci():
         return pd.read_sql_query("SELECT * FROM soci", conn)
 
 def aggiungi_socio(nome, cat, ref, mail, web, desc, logo, pagato, sede):
-    """Aggiunge un socio includendo la stringa dei paesi operativi (sede)"""
     with sqlite3.connect(DB_PATH) as conn:
-        # 9 colonne = 9 punti interrogativi
         conn.execute("""INSERT INTO soci (nome, categoria, referente, email, sito, descrizione, logo_path, pagato, sede) 
                      VALUES (?,?,?,?,?,?,?,?,?)""", (nome, cat, ref, mail, web, desc, logo, pagato, sede))
         conn.commit()
 
 def aggiorna_socio(id_socio, nome, cat, ref, mail, web, desc, logo, pagato, sede):
-    """Aggiorna i dati di un socio esistente"""
     with sqlite3.connect(DB_PATH) as conn:
-        # Aggiorniamo tutte le colonne inclusa 'sede' filtrando per ID
         conn.execute("""UPDATE soci SET 
                      nome=?, categoria=?, referente=?, email=?, sito=?, descrizione=?, logo_path=?, pagato=?, sede=? 
                      WHERE id=?""", (nome, cat, ref, mail, web, desc, logo, pagato, sede, id_socio))

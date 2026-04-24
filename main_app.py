@@ -104,9 +104,7 @@ with tabs[4]:
     st.info("Genera un documento di presentazione istituzionale per un singolo associato.")
     
     if not df_attuali.empty:
-        # Ordiniamo i nomi alfabeticamente
         nomi_soci = sorted(df_attuali['nome'].tolist())
-        
         col_sel, col_btn = st.columns([3, 1])
         socio_nome = col_sel.selectbox("Seleziona l'Associato", nomi_soci, label_visibility="collapsed")
         
@@ -135,7 +133,7 @@ with tabs[5]:
     else:
         st.info("Nessun dato per la mappa.")
 
-# --- TAB 7: CONFIGURAZIONE ---
+# --- TAB 7: CONFIGURAZIONE (Aggiornato con Logo Chiaro/Scuro) ---
 with tabs[6]:
     st.markdown("#### ⚙️ Impostazioni Profilo")
     conf = leggi_config()
@@ -145,17 +143,31 @@ with tabs[6]:
         nome_ass = col1.text_input("Nome Associazione", value=conf.get('nome_associazione', 'Assafrica'))
         email_ass = col1.text_input("Email Contatto", value=conf.get('email_contatto', ''))
         indirizzo_ass = col2.text_input("Sede Legale", value=conf.get('indirizzo', ''))
-        logo_inst = st.file_uploader("Aggiorna Logo Istituzionale", type=["png", "jpg", "jpeg"])
+        
+        st.write("---")
+        st.markdown("**🖼️ Gestione Loghi Istituzionali**")
+        c_l1, c_l2 = st.columns(2)
+        logo_inst = c_l1.file_uploader("Logo per sfondo CHIARO (Standard)", type=["png", "jpg", "jpeg"])
+        logo_neg = c_l2.file_uploader("Logo per sfondo SCURO (Bianco/Negative)", type=["png", "jpg", "jpeg"])
         
         if st.form_submit_button("Salva Modifiche"):
-            logo_path = conf.get('logo_istituzionale', '')
+            path_std = conf.get('logo_istituzionale', '')
+            path_neg = conf.get('logo_negativo', '')
+            
+            if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
+            
             if logo_inst:
-                if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
-                estensione = logo_inst.name.split('.')[-1].lower()
-                logo_path = f"loghi_soci/LOGO_ISTITUZIONALE.{estensione}"
-                with open(logo_path, "wb") as f:
+                ext_std = logo_inst.name.split('.')[-1].lower()
+                path_std = f"loghi_soci/LOGO_STD.{ext_std}"
+                with open(path_std, "wb") as f:
                     f.write(logo_inst.getbuffer())
             
-            salva_config(nome_ass, logo_path, indirizzo_ass, email_ass)
-            st.success("Configurazione salvata!")
+            if logo_neg:
+                ext_neg = logo_neg.name.split('.')[-1].lower()
+                path_neg = f"loghi_soci/LOGO_NEG.{ext_neg}"
+                with open(path_neg, "wb") as f:
+                    f.write(logo_neg.getbuffer())
+            
+            salva_config(nome_ass, path_std, path_neg, indirizzo_ass, email_ass)
+            st.success("Configurazione salvata correttamente!")
             st.rerun()
