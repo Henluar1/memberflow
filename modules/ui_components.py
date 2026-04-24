@@ -37,27 +37,38 @@ def render_form_inserimento():
             mail = c2.text_input("Email")
             web = c2.text_input("Sito Web")
             pagato = c2.selectbox("Stato Socio", ["Pagato", "In attesa"])
+            
             st.write("---")
             st.write("🌍 **Operatività in Africa**")
             tutto_continente = st.toggle("Opera in tutto il continente (Pan-Africana)")
             paesi_selezionati = ["Tutta l'Africa"] if tutto_continente else st.multiselect("Seleziona Paesi specifici", PAESI_AFRICA)
+            
+            st.write("---")
+            st.write("🖼️ **Logo Aziendale**")
+            c_up, c_link = st.columns(2)
+            logo_file = c_up.file_uploader("Carica file locale", type=["png", "jpg", "jpeg"])
+            logo_url = c_link.text_input("Oppure incolla URL logo", placeholder="https://www.assafrica.it/logo.png")
+            
             desc = st.text_area("Descrizione attività")
-            logo = st.file_uploader("Carica Logo", type=["png", "jpg"])
             
             if st.form_submit_button("SALVA NEL DATABASE"):
                 if nome and paesi_selezionati:
-                    path_logo = ""
-                    if logo:
+                    path_finale = ""
+                    # Priorità al file fisico, altrimenti usa l'URL
+                    if logo_file:
                         if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
-                        path_logo = f"loghi_soci/{nome.replace(' ', '_')}.png"
-                        Image.open(logo).save(path_logo)
+                        path_finale = f"loghi_soci/{nome.replace(' ', '_')}.png"
+                        Image.open(logo_file).save(path_finale)
+                    elif logo_url:
+                        path_finale = logo_url
+                    
                     stringa_paesi = ",".join(paesi_selezionati)
-                    aggiungi_socio(nome, cat, ref, mail, web, desc, path_logo, pagato, stringa_paesi)
+                    aggiungi_socio(nome, cat, ref, mail, web, desc, path_finale, pagato, stringa_paesi)
                     st.success(f"Azienda {nome} aggiunta!")
                     st.rerun()
 
     with tab2:
-        st.info("Carica l'Excel dei soci. Il sistema identificherà automaticamente le colonne.")
+        st.info("Carica l'Excel dei soci. Puoi includere una colonna con i link ai loghi.")
         file_excel = st.file_uploader("Carica file Excel (.xlsx)", type=["xlsx"])
         if file_excel:
             df_raw = pd.read_excel(file_excel, header=None)
@@ -93,7 +104,7 @@ def render_form_inserimento():
                             get_smart_val(row, ['email', 'mail'], ""), 
                             get_smart_val(row, ['sito', 'web', 'url'], ""), 
                             get_smart_val(row, ['descrizione', 'attività'], ""), 
-                            "", # path_logo vuoto per import massivo
+                            get_smart_val(row, ['logo', 'link logo', 'url logo'], ""), 
                             "Pagato", 
                             get_smart_val(row, ['sede', 'paesi', 'operatività'], "Tutta l'Africa")
                         )
@@ -122,12 +133,25 @@ def render_gestione():
                                        index=0 if row['pagato'] == "Pagato" else 1, key=f"p_{row['id']}")
                 
                 st.write("---")
-                col_img, col_up = st.columns([0.3, 0.7])
-                if row['logo_path'] and os.path.exists(row['logo_path']):
-                    col_img.image(row['logo_path'], width=100)
+                st.write("🖼️ **Gestione Logo**")
+                col_img, col_edit = st.columns([0.3, 0.7])
                 
-                new_logo = col_up.file_uploader("Aggiorna Logo", type=["png", "jpg"], key=f"up_{row['id']}")
+                logo_path = row['logo_path']
+                if logo_path:
+                    # Supporto sia per file locali che per URL
+                    if str(logo_path).startswith("http"):
+                        col_img.image(logo_path, width=100)
+                    elif os.path.exists(logo_path):
+                        col_img.image(logo_path, width=100)
+                else:
+                    col_img.warning("Nessun logo")
                 
+                new_logo_file = col_edit.file_uploader("Sostituisci file", type=["png", "jpg"], key=f"up_{row['id']}")
+                new_logo_url = col_edit.text_input("Oppure cambia URL logo", 
+                                                   value=logo_path if str(logo_path).startswith("http") else "", 
+                                                   key=f"url_{row['id']}")
+                
+                st.write("---")
                 current_paesi = str(row['sede']).split(",") if row['sede'] else []
                 is_all_africa = "Tutta l'Africa" in current_paesi
                 togg = st.toggle("Opera in tutta l'Africa", value=is_all_africa, key=f"togg_{row['id']}")
@@ -143,10 +167,13 @@ def render_gestione():
                 
                 b1, b2 = st.columns(2)
                 if b1.button("💾 SALVA MODIFICHE", key=f"save_{row['id']}", use_container_width=True):
-                    path_finale = row['logo_path']
-                    if new_logo:
+                    path_finale = logo_path
+                    if new_logo_file:
                         path_finale = f"loghi_soci/{new_nome.replace(' ', '_')}.png"
-                        Image.open(new_logo).save(path_finale)
+                        Image.open(new_logo_file).save(path_finale)
+                    elif new_logo_url:
+                        path_finale = new_logo_url
+                        
                     aggiorna_socio(row['id'], new_nome, new_cat, new_ref, new_mail, new_web, new_desc, path_finale, new_pag, new_paesi_str)
                     st.success("Dati aggiornati!")
                     st.rerun()
