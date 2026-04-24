@@ -45,30 +45,25 @@ def render_form_inserimento():
             
             st.write("---")
             st.write("🖼️ **Logo Aziendale**")
-            c_up, c_link = st.columns(2)
-            logo_file = c_up.file_uploader("Carica file locale", type=["png", "jpg", "jpeg"])
-            logo_url = c_link.text_input("Oppure incolla URL logo", placeholder="https://www.assafrica.it/logo.png")
+            logo_file = st.file_uploader("Carica file locale (PNG/JPG)", type=["png", "jpg", "jpeg"])
             
             desc = st.text_area("Descrizione attività")
             
             if st.form_submit_button("SALVA NEL DATABASE"):
                 if nome and paesi_selezionati:
                     path_finale = ""
-                    # Priorità al file fisico, altrimenti usa l'URL
                     if logo_file:
                         if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
-                        path_finale = f"loghi_soci/{nome.replace(' ', '_')}.png"
+                        path_finale = f"loghi_soci/{nome.replace(' ', '_').upper()}.png"
                         Image.open(logo_file).save(path_finale)
-                    elif logo_url:
-                        path_finale = logo_url
                     
                     stringa_paesi = ",".join(paesi_selezionati)
                     aggiungi_socio(nome, cat, ref, mail, web, desc, path_finale, pagato, stringa_paesi)
-                    st.success(f"Azienda {nome} aggiunta!")
+                    st.success(f"Azienda {nome} aggiunta con successo!")
                     st.rerun()
 
     with tab2:
-        st.info("Carica l'Excel dei soci. Puoi includere una colonna con i link ai loghi.")
+        st.info("💡 Carica l'Excel dei soci. I loghi andranno aggiunti manualmente dalla scheda 'Gestione'.")
         file_excel = st.file_uploader("Carica file Excel (.xlsx)", type=["xlsx"])
         if file_excel:
             df_raw = pd.read_excel(file_excel, header=None)
@@ -104,12 +99,12 @@ def render_form_inserimento():
                             get_smart_val(row, ['email', 'mail'], ""), 
                             get_smart_val(row, ['sito', 'web', 'url'], ""), 
                             get_smart_val(row, ['descrizione', 'attività'], ""), 
-                            get_smart_val(row, ['logo', 'link logo', 'url logo'], ""), 
+                            "", # I loghi si caricano dopo via Gestione
                             "Pagato", 
                             get_smart_val(row, ['sede', 'paesi', 'operatività'], "Tutta l'Africa")
                         )
                         progress_bar.progress((i + 1) / len(df_import))
-                    st.success("Importazione completata!")
+                    st.success("Importazione anagrafiche completata!")
                     st.rerun()
 
 def render_gestione():
@@ -137,19 +132,12 @@ def render_gestione():
                 col_img, col_edit = st.columns([0.3, 0.7])
                 
                 logo_path = row['logo_path']
-                if logo_path:
-                    # Supporto sia per file locali che per URL
-                    if str(logo_path).startswith("http"):
-                        col_img.image(logo_path, width=100)
-                    elif os.path.exists(logo_path):
-                        col_img.image(logo_path, width=100)
+                if logo_path and os.path.exists(logo_path):
+                    col_img.image(logo_path, width=120)
                 else:
-                    col_img.warning("Nessun logo")
+                    col_img.warning("Nessun logo caricato")
                 
-                new_logo_file = col_edit.file_uploader("Sostituisci file", type=["png", "jpg"], key=f"up_{row['id']}")
-                new_logo_url = col_edit.text_input("Oppure cambia URL logo", 
-                                                   value=logo_path if str(logo_path).startswith("http") else "", 
-                                                   key=f"url_{row['id']}")
+                new_logo_file = col_edit.file_uploader("Sostituisci file logo", type=["png", "jpg", "jpeg"], key=f"up_{row['id']}")
                 
                 st.write("---")
                 current_paesi = str(row['sede']).split(",") if row['sede'] else []
@@ -163,19 +151,18 @@ def render_gestione():
                     sel = st.multiselect("Modifica Paesi", PAESI_AFRICA, default=defaults, key=f"ms_{row['id']}")
                     new_paesi_str = ",".join(sel)
                 
-                new_desc = st.text_area("Descrizione", value=row['descrizione'], key=f"d_{row['id']}")
+                new_desc = st.text_area("Descrizione attività", value=row['descrizione'], key=f"d_{row['id']}")
                 
                 b1, b2 = st.columns(2)
                 if b1.button("💾 SALVA MODIFICHE", key=f"save_{row['id']}", use_container_width=True):
                     path_finale = logo_path
                     if new_logo_file:
-                        path_finale = f"loghi_soci/{new_nome.replace(' ', '_')}.png"
+                        if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
+                        path_finale = f"loghi_soci/{new_nome.replace(' ', '_').upper()}.png"
                         Image.open(new_logo_file).save(path_finale)
-                    elif new_logo_url:
-                        path_finale = new_logo_url
                         
                     aggiorna_socio(row['id'], new_nome, new_cat, new_ref, new_mail, new_web, new_desc, path_finale, new_pag, new_paesi_str)
-                    st.success("Dati aggiornati!")
+                    st.success("Dati aggiornati con successo!")
                     st.rerun()
                 
                 if b2.button("🗑️ ELIMINA AZIENDA", key=f"del_{row['id']}", use_container_width=True):
@@ -185,29 +172,26 @@ def render_gestione():
         st.info("Database vuoto.")
 
 def render_analytics():
+    # ... (Restra uguale, mostra le Dashboard di Business Intelligence)
     df = leggi_soci()
     if not df.empty:
         st.subheader("📊 Business Intelligence & Macro-Trend Africa")
         
-        # --- ELABORAZIONE DATI ---
         lista_paesi_flat = []
         heatmap_data = []
         for _, row in df.iterrows():
             p_str = str(row.get('sede', ''))
             paesi = PAESI_AFRICA if p_str == "Tutta l'Africa" else [p.strip() for p in p_str.split(",") if p.strip()]
-            
             for p in paesi:
                 if p in PAESI_AFRICA:
                     lista_paesi_flat.append(p)
                     heatmap_data.append({'Settore': row['categoria'], 'Paese': p})
-            
             if p_str == "Tutta l'Africa":
                 lista_paesi_flat.append("Pan-Africana")
 
         df_geo_counts = pd.Series(lista_paesi_flat).value_counts().reset_index()
         df_geo_counts.columns = ['Paese', 'Numero Aziende']
 
-        # 1. KPI TOP BAR
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Totale Soci", len(df))
         mercati_f = len(df_geo_counts[df_geo_counts['Paese'] != "Pan-Africana"])
@@ -219,7 +203,6 @@ def render_analytics():
 
         st.divider()
 
-        # 2. TOP MERCATI E COMPOSIZIONE
         c1, c2 = st.columns([0.6, 0.4])
         with c1:
             st.markdown("#### 🏆 Top 15 Mercati Strategici")
@@ -237,7 +220,6 @@ def render_analytics():
 
         st.divider()
 
-        # 3. HEATMAP SETTORE VS PAESE
         st.markdown("#### 🛰️ Radar di Penetrazione: Settore vs Paesi")
         if heatmap_data:
             df_heat = pd.DataFrame(heatmap_data)
@@ -246,10 +228,7 @@ def render_analytics():
                                           color_continuous_scale="GnBu", text_auto=True)
             st.plotly_chart(fig_heat, use_container_width=True)
 
-        # 4. PAGAMENTI
         st.markdown("#### 💰 Health Check: Stato Pagamenti per Settore")
         fig_pay = px.histogram(df, x="categoria", color="pagato", barmode="group",
                                color_discrete_map={'Pagato': '#2E86C1', 'In attesa': '#E67E22'})
         st.plotly_chart(fig_pay, use_container_width=True)
-    else:
-        st.info("Nessun dato per le analisi.")
