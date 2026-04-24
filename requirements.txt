@@ -3,3 +3,5 @@ pandas
 fpdf2
 plotly
 Pillow
+streamlit-folium
+folium
