@@ -127,7 +127,7 @@ def render_gestione():
     df = leggi_soci()
     
     if not df.empty:
-        st.info("💡 Usa la tabella per modifiche rapide ai testi. Per i loghi, usa la sezione sottostante.")
+        st.info("💡 Usa la tabella per modifiche rapide ai testi. I Paesi operativi e i Loghi si gestiscono dal pannello avanzato in basso.")
         
         edited_df = st.data_editor(
             df,
@@ -138,7 +138,7 @@ def render_gestione():
                 "categoria": st.column_config.SelectboxColumn("Settore", options=CATEGORIE_REAL),
                 "pagato": st.column_config.SelectboxColumn("Stato", options=["Pagato", "In attesa"]),
                 "sito": st.column_config.LinkColumn("Sito Web"),
-                "sede": st.column_config.TextColumn("Operatività")
+                "sede": st.column_config.TextColumn("Operatività (Vedi sotto per modificare)", disabled=True) # <-- Bloccato!
             },
             hide_index=True,
             use_container_width=True,
@@ -146,7 +146,7 @@ def render_gestione():
             height=400
         )
 
-        if st.button("💾 SALVA MODIFICHE TABELLA", type="primary"):
+        if st.button("💾 SALVA MODIFICHE TESTUALI (Tabella)", type="primary"):
             for _, row in edited_df.iterrows():
                 if pd.notna(row.get('id')):
                     aggiorna_socio(
@@ -159,54 +159,81 @@ def render_gestione():
 
         st.divider()
 
-        st.markdown("#### 🖼️ Media Manager: Caricamento Loghi")
-        with st.expander("Sviluppa per caricare o cambiare un logo"):
-            col_sel, col_up = st.columns([1, 1])
+        st.markdown("#### ⚙️ Editor Avanzato: Loghi e Paesi Operativi")
+        with st.expander("Sviluppa per modificare la copertura geografica o caricare un logo"):
             
-            nomi_soci = df['nome'].tolist()
-            azienda_scelta = col_sel.selectbox("Seleziona Azienda", nomi_soci)
-            
+            nomi_soci = sorted(df['nome'].tolist())
+            azienda_scelta = st.selectbox("Seleziona Azienda da modificare:", nomi_soci)
             socio_target = df[df['nome'] == azienda_scelta].iloc[0]
-            logo_attuale = socio_target.get('logo_path', '')
             
-            if pd.notna(logo_attuale) and str(logo_attuale).strip() != "" and os.path.exists(str(logo_attuale)):
-                col_sel.image(str(logo_attuale), caption="Logo attuale", width=200)
-            else:
-                col_sel.warning("Nessun logo presente.")
+            st.markdown("<hr style='margin: 0.5em 0;'>", unsafe_allow_html=True)
+            c_logo, c_paesi = st.columns(2)
             
-            nuovo_logo = col_up.file_uploader(f"Carica nuovo logo per {azienda_scelta}", type=["png", "jpg", "jpeg"])
-            
-            if col_up.button("CONFERMA NUOVO LOGO"):
-                if nuovo_logo is not None:
-                    if not os.path.exists("loghi_soci"): 
-                        os.makedirs("loghi_soci")
-                        
-                    nome_sicuro = "".join(x for x in azienda_scelta if x.isalnum() or x in " ").replace(' ', '_').upper()
-                    estensione = nuovo_logo.name.split('.')[-1].lower()
-                    path_nuovo = f"loghi_soci/{nome_sicuro}.{estensione}"
-                    
-                    with open(path_nuovo, "wb") as f:
-                        f.write(nuovo_logo.getbuffer())
-                    
-                    try:
-                        aggiorna_socio(
-                            int(socio_target['id']), 
-                            str(socio_target['nome']), 
-                            str(socio_target['categoria']), 
-                            str(socio_target['referente']), 
-                            str(socio_target['email']), 
-                            str(socio_target['sito']), 
-                            str(socio_target['descrizione']), 
-                            path_nuovo, 
-                            str(socio_target['pagato']), 
-                            str(socio_target['sede'])
-                        )
-                        st.success(f"✅ Logo di {azienda_scelta} aggiornato correttamente!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Errore durante l'aggiornamento del database: {e}")
+            # --- ZONA LOGO ---
+            with c_logo:
+                st.markdown("**🖼️ Gestione Logo**")
+                logo_attuale = socio_target.get('logo_path', '')
+                if pd.notna(logo_attuale) and str(logo_attuale).strip() != "" and os.path.exists(str(logo_attuale)):
+                    st.image(str(logo_attuale), caption="Logo attuale", width=150)
                 else:
-                    col_up.error("Devi prima selezionare un file!")
+                    st.warning("Nessun logo presente.")
+                
+                nuovo_logo = st.file_uploader(f"Carica nuovo logo", type=["png", "jpg", "jpeg"], label_visibility="collapsed")
+            
+            # --- ZONA PAESI ---
+            with c_paesi:
+                st.markdown("**🌍 Copertura Geografica**")
+                sede_attuale = str(socio_target.get('sede', ''))
+                is_pan_africana = (sede_attuale == "Tutta l'Africa")
+                
+                tutto_continente_edit = st.toggle("Opera in tutto il continente (Pan-Africana)", value=is_pan_africana, key="tgl_edit")
+                
+                if tutto_continente_edit:
+                    nuovi_paesi = ["Tutta l'Africa"]
+                else:
+                    paesi_preesistenti = []
+                    if sede_attuale and not is_pan_africana:
+                        paesi_preesistenti = [p.strip() for p in sede_attuale.split(',') if p.strip() in PAESI_AFRICA]
+                    
+                    nuovi_paesi = st.multiselect(
+                        "Modifica Paesi:", 
+                        options=PAESI_AFRICA,
+                        default=paesi_preesistenti,
+                        key="ms_edit"
+                    )
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("💾 CONFERMA MODIFICHE AVANZATE", type="primary", use_container_width=True):
+                # Processa Logo
+                path_finale = logo_attuale
+                if nuovo_logo is not None:
+                    if not os.path.exists("loghi_soci"): os.makedirs("loghi_soci")
+                    nome_sicuro = "".join(x for x in azienda_scelta if x.isalnum() or x in " ").replace(' ', '_').upper()
+                    est = nuovo_logo.name.split('.')[-1].lower()
+                    path_finale = f"loghi_soci/{nome_sicuro}.{est}"
+                    with open(path_finale, "wb") as f:
+                        f.write(nuovo_logo.getbuffer())
+                
+                # Processa Paesi
+                stringa_paesi_aggiornata = ",".join(nuovi_paesi)
+                
+                try:
+                    aggiorna_socio(
+                        int(socio_target['id']), 
+                        str(socio_target['nome']), 
+                        str(socio_target['categoria']), 
+                        str(socio_target['referente']), 
+                        str(socio_target['email']), 
+                        str(socio_target['sito']), 
+                        str(socio_target['descrizione']), 
+                        path_finale, 
+                        str(socio_target['pagato']), 
+                        stringa_paesi_aggiornata
+                    )
+                    st.success(f"✅ Dati e Logo di {azienda_scelta} aggiornati correttamente!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Errore durante l'aggiornamento: {e}")
 
         st.divider()
         
