@@ -1,8 +1,12 @@
 import streamlit as st
-from modules import styles
-import modules.ui_components as ui
+from motore import styles
+import motore.ui_components as ui
 
-st.set_page_config(page_title="Gestione Anagrafiche", layout="wide", page_icon="📋")
+# --- SETUP PAGINA ---
+st.set_page_config(page_title="Gestione Anagrafiche", page_icon="📋", layout="wide")
 styles.apply_styles()
 
+# --- RENDER DELLA GESTIONE ---
+# Chiama la funzione che abbiamo costruito in ui_components.py
 ui.render_gestione()
+ui.render_sidebar_footer()
